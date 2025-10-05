@@ -10,36 +10,22 @@ app.post("/webhook", async (req, res) => {
   const data = req.body;
   console.log("📩 Webhook received:", data.event);
 
-  // Проверяем все systemPromptResponses и ищем promptTitle === "Summary"
-  const responses = data.file?.systemPromptResponses || {};
-  const entries = Object.entries(responses);
-
-  let summaryFound = false;
-
-  for (const [key, value] of entries) {
-    if (value.promptTitle === "Summary" && value.responseText) {
-      summaryFound = true;
-      console.log("🧠 SUMMARY FOUND:");
-      try {
-        const summaryData = JSON.parse(value.responseText);
-        if (Array.isArray(summaryData.chapters)) {
-          for (const ch of summaryData.chapters) {
-            console.log(`📍 ${ch.title}`);
-            console.log(`🕒 ${ch.start} → ${ch.end}`);
-            console.log(`💬 ${ch.notes}\n`);
-          }
-        } else {
-          console.log("🗒️ Raw Summary Text:\n", value.responseText);
-        }
-      } catch {
-        console.log("⚠️ Could not parse Summary JSON:");
-        console.log(value.responseText);
+  // Проверяем наличие блока CHAPTERS в systemPromptResponses
+  const chaptersJson = data.file?.systemPromptResponses?.CHAPTERS?.responseText;
+  if (chaptersJson) {
+    try {
+      const chapters = JSON.parse(chaptersJson);
+      console.log("🧠 SUMMARY:");
+      for (const ch of chapters.chapters) {
+        console.log(`📍 ${ch.title}`);
+        console.log(`🕒 ${ch.start} → ${ch.end}`);
+        console.log(`💬 ${ch.notes}\n`);
       }
+    } catch (err) {
+      console.log("⚠️ Could not parse CHAPTERS JSON:", chaptersJson);
     }
-  }
-
-  if (!summaryFound) {
-    console.log("ℹ️ No 'Summary' promptTitle found in systemPromptResponses.");
+  } else {
+    console.log("ℹ️ CHAPTERS not found yet.");
   }
 
   res.status(200).send({ success: true });
