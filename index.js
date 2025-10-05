@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 import bodyParser from "body-parser";
 
 const app = express();
@@ -9,27 +8,38 @@ app.use(bodyParser.json());
 
 app.post("/webhook", async (req, res) => {
   const data = req.body;
-  console.log("📩 Webhook received:", JSON.stringify(data, null, 2));
+  console.log("📩 Webhook received:", data.event);
 
-  // если есть ссылка на транскрипт — скачиваем и выводим текст
-  if (data.file?.transcriptUrl) {
-    console.log("🗒️ Downloading transcript...");
-    const response = await fetch(data.file.transcriptUrl);
-    const transcript = await response.json();
+  // Проверяем все systemPromptResponses и ищем promptTitle === "Summary"
+  const responses = data.file?.systemPromptResponses || {};
+  const entries = Object.entries(responses);
 
-    // извлекаем поле text
-    let rawText = transcript.text || "";
-    // исправляем кракозябры (если есть)
-    const fixedText = Buffer.from(rawText, "binary").toString("utf8");
+  let summaryFound = false;
 
-    console.log("🗣️ TRANSCRIPT:\n", fixedText);
+  for (const [key, value] of entries) {
+    if (value.promptTitle === "Summary" && value.responseText) {
+      summaryFound = true;
+      console.log("🧠 SUMMARY FOUND:");
+      try {
+        const summaryData = JSON.parse(value.responseText);
+        if (Array.isArray(summaryData.chapters)) {
+          for (const ch of summaryData.chapters) {
+            console.log(`📍 ${ch.title}`);
+            console.log(`🕒 ${ch.start} → ${ch.end}`);
+            console.log(`💬 ${ch.notes}\n`);
+          }
+        } else {
+          console.log("🗒️ Raw Summary Text:\n", value.responseText);
+        }
+      } catch {
+        console.log("⚠️ Could not parse Summary JSON:");
+        console.log(value.responseText);
+      }
+    }
   }
 
-  // если пришёл summary
-  if (data.file?.summary) {
-    console.log("🧠 SUMMARY:", data.file.summary);
-  } else {
-    console.log("ℹ️ No summary yet.");
+  if (!summaryFound) {
+    console.log("ℹ️ No 'Summary' promptTitle found in systemPromptResponses.");
   }
 
   res.status(200).send({ success: true });
