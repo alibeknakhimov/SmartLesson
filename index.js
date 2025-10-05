@@ -1,56 +1,49 @@
 import express from "express";
-import bodyParser from "body-parser";
 import fetch from "node-fetch";
-import iconv from "iconv-lite"; // npm install iconv-lite
+import bodyParser from "body-parser";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Разбираем JSON
 app.use(bodyParser.json());
 
-// Главная страница
 app.get("/", (req, res) => {
   res.send("✅ ScreenApp Webhook is running");
 });
 
-// Маршрут для ScreenApp Webhook
 app.post("/webhook", async (req, res) => {
   const data = req.body;
   console.log("📩 Webhook received:", JSON.stringify(data, null, 2));
 
-  // Проверяем наличие transcriptUrl
-  const transcriptUrl = data?.file?.transcriptUrl;
-  if (!transcriptUrl) {
-    console.log("⚠️ transcriptUrl not found.");
-    return res.status(200).send({ success: true });
-  }
-
-  console.log("🗒️ Downloading transcript...");
-
+  // Проверяем наличие блока с Summary
   try {
-    const response = await fetch(transcriptUrl);
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const summaryBlock =
+      data.file?.systemPromptResponses?.CHAPTERS?.responseText;
 
-    // Сначала пытаемся как UTF-8
-    let decoded = buffer.toString("utf8");
-
-    // Проверим, содержит ли странные символы — тогда попробуем Windows-1251
-    if (decoded.includes("Р") || decoded.includes("С") || decoded.includes("Љ")) {
-      decoded = iconv.decode(buffer, "windows-1251");
-      console.log("🔁 Detected Windows-1251 encoding, re-decoded to UTF-8");
+    if (summaryBlock) {
+      const summaryJson = JSON.parse(summaryBlock);
+      console.log("🧠 SUMMARY FOUND!");
+      summaryJson.chapters.forEach((ch, i) => {
+        console.log(`📘 Chapter ${i + 1}: ${ch.title}`);
+        console.log(`🕒 ${ch.start} → ${ch.end}`);
+        console.log(`📝 ${ch.notes}\n`);
+      });
+    } else {
+      console.log("ℹ️ No summary found in payload. Trying transcript...");
+      if (data.file?.transcriptUrl) {
+        console.log("🗒️ Downloading transcript...");
+        const resp = await fetch(data.file.transcriptUrl);
+        const transcript = await resp.json();
+        console.log("🗣️ TRANSCRIPT TEXT:\n", transcript.text || "(no text)");
+      }
     }
-
-    const json = JSON.parse(decoded);
-    console.log("🗣️ TRANSCRIPT TEXT:\n", json.text);
   } catch (err) {
-    console.error("❌ Error processing transcript:", err.message);
+    console.error("❌ Error parsing summary:", err);
   }
 
   res.status(200).send({ success: true });
 });
 
-// Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Webhook server running on port ${PORT}`);
 });
